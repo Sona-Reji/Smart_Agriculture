@@ -1,0 +1,29 @@
+{
+  "rules": {
+    /* DEVELOPMENT RULES - Update for production before deployment */
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "fields": {
+      "field01": {
+        "current": {
+          ".read": true,
+          ".write": true
+        },
+        "history": {
+          ".read": true,
+          ".write": true
+        },
+        "alerts": {
+          ".read": true,
+          ".write": true
+        }
+      }
+    },
+    "users": {
+      ".read": true,
+      "$uid": {
+        ".write": "$uid === auth.uid || auth != null"
+      }
+    }
+  }
+}

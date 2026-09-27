@@ -1,0 +1,20 @@
+{
+  "fields": {
+    "field01": {
+      "current": {
+        "soilMoisture": 42,
+        "temperature": 29.5,
+        "humidity": 76,
+        "light": 680,
+        "rain": false,
+        "waterLevel": 72,
+        "battery": 91,
+        "deviceStatus": "online",
+        "timestamp": 1727350000
+      },
+      "history": {},
+      "alerts": {}
+    }
+  },
+  "users": {}
+}
