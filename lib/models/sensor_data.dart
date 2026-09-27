@@ -23,22 +23,50 @@ class SensorData {
 
   bool get isOffline => deviceStatus.toLowerCase() == 'offline';
 
-  /// Factory constructor to deserialize Firebase Realtime Database map
-  factory SensorData.fromMap(Map<String, dynamic> map) {
+  /// Factory constructor to deserialize Firebase Realtime Database map safely
+  factory SensorData.fromMap(Map<dynamic, dynamic> map) {
+    double parseDouble(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      if (val is String) return double.tryParse(val) ?? 0.0;
+      return 0.0;
+    }
+
+    bool parseBool(dynamic val) {
+      if (val == null) return false;
+      if (val is bool) return val;
+      if (val is num) return val != 0;
+      if (val is String) {
+        final s = val.toLowerCase().trim();
+        return s == 'true' || s == '1' || s == 'yes';
+      }
+      return false;
+    }
+
+    DateTime parseTimestamp(dynamic val) {
+      if (val == null) return DateTime.now();
+      if (val is int) {
+        // Handle both epoch seconds (10 digits) and milliseconds (13 digits)
+        final ms = val < 10000000000 ? val * 1000 : val;
+        return DateTime.fromMillisecondsSinceEpoch(ms);
+      }
+      try {
+        return DateTime.parse(val.toString());
+      } catch (_) {
+        return DateTime.now();
+      }
+    }
+
     return SensorData(
-      soilMoisture: (map['soilMoisture'] as num?)?.toDouble() ?? 0.0,
-      temperature: (map['temperature'] as num?)?.toDouble() ?? 0.0,
-      humidity: (map['humidity'] as num?)?.toDouble() ?? 0.0,
-      light: (map['light'] as num?)?.toDouble() ?? 0.0,
-      rain: map['rain'] as bool? ?? false,
-      waterLevel: (map['waterLevel'] as num?)?.toDouble() ?? 0.0,
-      battery: (map['battery'] as num?)?.toDouble() ?? 0.0,
-      deviceStatus: map['deviceStatus'] as String? ?? 'offline',
-      timestamp: map['timestamp'] != null
-          ? (map['timestamp'] is int
-              ? DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int)
-              : DateTime.parse(map['timestamp'].toString()))
-          : DateTime.now(),
+      soilMoisture: parseDouble(map['soilMoisture']),
+      temperature: parseDouble(map['temperature']),
+      humidity: parseDouble(map['humidity']),
+      light: parseDouble(map['light']),
+      rain: parseBool(map['rain']),
+      waterLevel: parseDouble(map['waterLevel']),
+      battery: parseDouble(map['battery']),
+      deviceStatus: map['deviceStatus']?.toString() ?? 'online',
+      timestamp: parseTimestamp(map['timestamp']),
     );
   }
 
