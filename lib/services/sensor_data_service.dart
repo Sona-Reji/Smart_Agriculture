@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:http/http.dart' as http;
 import '../models/sensor_data.dart';
 import '../models/field_alert.dart';
 
@@ -20,6 +23,9 @@ enum HistoryTimeframe {
 }
 
 class SensorDataService extends ChangeNotifier {
+  static const String rtdbUrl = 'https://smart-agriculture-projec-408e8-default-rtdb.firebaseio.com';
+  static const String sensorPath = 'fields/field01/current';
+
   // Singleton pattern for easy service access
   static final SensorDataService _instance = SensorDataService._internal();
   factory SensorDataService() => _instance;
@@ -46,23 +52,103 @@ class SensorDataService extends ChangeNotifier {
   String? get error => _error;
 
   Timer? _tickerTimer;
+  Timer? _pollingFallbackTimer;
   StreamSubscription<DatabaseEvent>? _firebaseSubscription;
+
+  void _handleIncomingSensorMap(Map<dynamic, dynamic> data) {
+    try {
+      final newData = SensorData.fromMap(data);
+      _currentData = newData;
+      _lastUpdated = DateTime.now();
+      _isLoading = false;
+      _error = null;
+
+      debugPrint(
+        'Firebase sensor update:\n'
+        'soilMoisture = ${_currentData.soilMoisture}\n'
+        'temperature = ${_currentData.temperature}\n'
+        'humidity = ${_currentData.humidity}\n'
+        'waterLevel = ${_currentData.waterLevel}\n'
+        'rain = ${_currentData.rain}\n'
+        'battery = ${_currentData.battery}\n'
+        'deviceStatus = ${_currentData.deviceStatus}',
+      );
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error deserializing Firebase sensor update: $e");
+    }
+  }
 
   void _initFirebaseListener() {
     try {
-      final ref = FirebaseDatabase.instance.ref('fields/field01/current');
+      // Connect specifically to the exact Realtime Database URL
+      final db = FirebaseDatabase.instanceFor(
+        app: Firebase.app(),
+        databaseURL: rtdbUrl,
+      );
+      final ref = db.ref(sensorPath);
+
       _firebaseSubscription = ref.onValue.listen((event) {
         if (event.snapshot.exists && event.snapshot.value != null) {
-          final data = Map<String, dynamic>.from(event.snapshot.value as Map);
-          _currentData = SensorData.fromMap(data);
-          _lastUpdated = DateTime.now();
-          notifyListeners();
+          final val = event.snapshot.value;
+          if (val is Map) {
+            _handleIncomingSensorMap(val);
+          }
         }
       }, onError: (e) {
-        debugPrint("Firebase sensor listener note: $e");
+        debugPrint("Firebase sensor listener error: $e");
+        _startHttpFallback();
       });
+
+      debugPrint("Firebase RTDB onValue listener active on $sensorPath");
     } catch (e) {
-      debugPrint("Firebase sensor init note: $e");
+      debugPrint("Native Firebase listener not supported or failed ($e). Starting REST synchronization.");
+      _startHttpFallback();
+    }
+
+    // Initial fetch to populate immediately
+    fetchCurrentDataOnce();
+  }
+
+  void _startHttpFallback() {
+    if (_pollingFallbackTimer != null && _pollingFallbackTimer!.isActive) return;
+
+    debugPrint("Using universal HTTP fallback for Firebase sensor updates every 2s");
+    _pollingFallbackTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      fetchCurrentDataOnce();
+    });
+  }
+
+  /// One-time fetch of current sensor telemetry from Firebase
+  Future<void> fetchCurrentDataOnce() async {
+    // 1. Try Firebase SDK get() if available
+    try {
+      final db = FirebaseDatabase.instanceFor(
+        app: Firebase.app(),
+        databaseURL: rtdbUrl,
+      );
+      final snapshot = await db.ref(sensorPath).get();
+      if (snapshot.exists && snapshot.value is Map) {
+        _handleIncomingSensorMap(snapshot.value as Map);
+        return;
+      }
+    } catch (_) {
+      // Fall through to REST endpoint
+    }
+
+    // 2. Direct HTTP REST fetch (works on all platforms including Windows desktop)
+    try {
+      final uri = Uri.parse('$rtdbUrl/$sensorPath.json');
+      final res = await http.get(uri).timeout(const Duration(seconds: 3));
+      if (res.statusCode == 200 && res.body.isNotEmpty && res.body != 'null') {
+        final decoded = json.decode(res.body);
+        if (decoded is Map) {
+          _handleIncomingSensorMap(decoded);
+        }
+      }
+    } catch (e) {
+      debugPrint("HTTP fetch error: $e");
     }
   }
 
@@ -70,8 +156,7 @@ class SensorDataService extends ChangeNotifier {
     _tickerTimer?.cancel();
     // Periodically tick seconds ago update
     _tickerTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_currentScenario != DemoScenario.deviceOffline) {
-        _lastUpdated = DateTime.now();
+      if (!_currentData.isOffline) {
         notifyListeners();
       }
     });
@@ -80,6 +165,8 @@ class SensorDataService extends ChangeNotifier {
   void stopTimer() {
     _tickerTimer?.cancel();
     _tickerTimer = null;
+    _pollingFallbackTimer?.cancel();
+    _pollingFallbackTimer = null;
   }
 
   /// Mark an active alert as resolved
@@ -104,18 +191,16 @@ class SensorDataService extends ChangeNotifier {
     notifyListeners();
   }
 
-
-  /// Simulate manual refresh action
+  /// Manual refresh action fetches directly from Firebase
   Future<void> refreshData() async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 600));
+    await fetchCurrentDataOnce();
 
     _isLoading = false;
     _lastUpdated = DateTime.now();
-    _currentData = _generateCurrentDataForScenario(_currentScenario);
     notifyListeners();
   }
 

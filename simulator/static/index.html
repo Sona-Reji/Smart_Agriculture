@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 Hardware Sensor Simulator | Smart Agriculture</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Header -->
+    <header class="header">
+      <div class="logo-group">
+        <div class="logo-icon">🌱</div>
+        <div>
+          <h1>Smart Agriculture - ESP32 Sensor Simulator</h1>
+          <p class="subtitle">Hardware telemetry simulation feeding Firebase RTDB & Flutter App</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <div class="badge badge-firebase">
+          <span class="status-dot pulse" id="cloudDot"></span>
+          <span id="cloudStatus">Connecting to Firebase...</span>
+        </div>
+        <div class="badge badge-target">
+          <span>Path: <code>fields/field01/current</code></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="dashboard-grid">
+      <!-- Left Column: Scenarios & Controls -->
+      <section class="panel scenarios-panel">
+        <div class="panel-header">
+          <h2>⚡ Demo Scenarios (1-Click Presets)</h2>
+          <span class="panel-tag">Trigger Flutter Alerts</span>
+        </div>
+        <p class="panel-desc">Click any scenario to immediately demonstrate reactive Flutter app updates:</p>
+
+        <div class="scenario-buttons">
+          <button class="scenario-btn active" data-scenario="normal" id="btnNormal">
+            <div class="btn-icon">🟢</div>
+            <div class="btn-text">
+              <strong>Normal Field</strong>
+              <span>Optimal moisture, temp & water</span>
+            </div>
+            <span class="tag-status healthy">Healthy</span>
+          </button>
+
+          <button class="scenario-btn" data-scenario="dry_soil" id="btnDrySoil">
+            <div class="btn-icon">🏜️</div>
+            <div class="btn-text">
+              <strong>Dry Soil Scenario</strong>
+              <span>Moisture drops to 16% (&lt;25%)</span>
+            </div>
+            <span class="tag-status warning">Warning Alert</span>
+          </button>
+
+          <button class="scenario-btn" data-scenario="high_temperature" id="btnHighTemp">
+            <div class="btn-icon">🔥</div>
+            <div class="btn-text">
+              <strong>High Temperature</strong>
+              <span>Heat spike to 38.8°C (&gt;35°C)</span>
+            </div>
+            <span class="tag-status warning">Heat Alert</span>
+          </button>
+
+          <button class="scenario-btn" data-scenario="low_water" id="btnLowWater">
+            <div class="btn-icon">🪣</div>
+            <div class="btn-text">
+              <strong>Low Water Tank</strong>
+              <span>Reservoir drops to 18% (&lt;30%)</span>
+            </div>
+            <span class="tag-status warning">Refill Alert</span>
+          </button>
+
+          <button class="scenario-btn" data-scenario="rain" id="btnRain">
+            <div class="btn-icon">🌧️</div>
+            <div class="btn-text">
+              <strong>Rain Detected</strong>
+              <span>Rain = true, pauses irrigation</span>
+            </div>
+            <span class="tag-status info">Insight Update</span>
+          </button>
+
+          <button class="scenario-btn" data-scenario="device_offline" id="btnOffline">
+            <div class="btn-icon">⚠️</div>
+            <div class="btn-text">
+              <strong>Device Offline</strong>
+              <span>ESP32 gateway disconnected</span>
+            </div>
+            <span class="tag-status critical">Critical Alert</span>
+          </button>
+
+          <button class="scenario-btn recover-btn" data-scenario="recover" id="btnRecover">
+            <div class="btn-icon">🔄</div>
+            <div class="btn-text">
+              <strong>Smooth Recovery</strong>
+              <span>Transition smoothly back to optimal</span>
+            </div>
+            <span class="tag-status recover">Auto-Recover</span>
+          </button>
+        </div>
+
+        <!-- Loop Configuration -->
+        <div class="engine-controls">
+          <h3>⚙️ Transmission Engine</h3>
+          <div class="controls-row">
+            <button class="toggle-btn" id="btnToggleLoop">
+              <span id="loopStatusText">⏸ Pause Loop</span>
+            </button>
+            <button class="action-btn" id="btnForcePush">
+              🚀 Push Now
+            </button>
+            <div class="jitter-toggle">
+              <label>
+                <input type="checkbox" id="chkJitter" checked>
+                <span>Analog ADC Jitter</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Center Column: Interactive Manual Sliders -->
+      <section class="panel sliders-panel">
+        <div class="panel-header">
+          <h2>🎛️ Manual Sensor Sliders</h2>
+          <span class="panel-tag">Live Override</span>
+        </div>
+        <p class="panel-desc">Drag sliders to customize individual values in real time:</p>
+
+        <div class="sliders-list">
+          <!-- Soil Moisture -->
+          <div class="slider-card" data-metric="soilMoisture">
+            <div class="slider-info">
+              <span class="slider-title">💧 Soil Moisture</span>
+              <span class="slider-val" id="valSoilMoisture">45%</span>
+            </div>
+            <input type="range" id="rangeSoilMoisture" min="0" max="100" step="1" value="45">
+            <div class="range-labels">
+              <span>0% (Dry)</span>
+              <span class="threshold-marker">&lt;25% Alert</span>
+              <span>100% (Wet)</span>
+            </div>
+          </div>
+
+          <!-- Temperature -->
+          <div class="slider-card" data-metric="temperature">
+            <div class="slider-info">
+              <span class="slider-title">🌡️ Field Temperature</span>
+              <span class="slider-val" id="valTemperature">27.5°C</span>
+            </div>
+            <input type="range" id="rangeTemperature" min="10" max="50" step="0.5" value="27.5">
+            <div class="range-labels">
+              <span>10°C</span>
+              <span class="threshold-marker">&gt;35°C Alert</span>
+              <span>50°C</span>
+            </div>
+          </div>
+
+          <!-- Relative Humidity -->
+          <div class="slider-card" data-metric="humidity">
+            <div class="slider-info">
+              <span class="slider-title">💨 Relative Humidity</span>
+              <span class="slider-val" id="valHumidity">72%</span>
+            </div>
+            <input type="range" id="rangeHumidity" min="10" max="100" step="1" value="72">
+            <div class="range-labels">
+              <span>10% (Dry)</span>
+              <span>Optimal: 60-85%</span>
+              <span>100% (Saturated)</span>
+            </div>
+          </div>
+
+          <!-- Light / Solar Radiation -->
+          <div class="slider-card" data-metric="light">
+            <div class="slider-info">
+              <span class="slider-title">☀️ Light / Solar Radiation</span>
+              <span class="slider-val" id="valLight">680 lux</span>
+            </div>
+            <input type="range" id="rangeLight" min="0" max="1500" step="20" value="680">
+            <div class="range-labels">
+              <span>0 lux (Night)</span>
+              <span>Optimal: 300-900</span>
+              <span>1500 lux (Intense)</span>
+            </div>
+          </div>
+
+          <!-- Water Reservoir -->
+          <div class="slider-card" data-metric="waterLevel">
+            <div class="slider-info">
+              <span class="slider-title">🛢️ Water Reservoir Level</span>
+              <span class="slider-val" id="valWaterLevel">78%</span>
+            </div>
+            <input type="range" id="rangeWaterLevel" min="0" max="100" step="1" value="78">
+            <div class="range-labels">
+              <span>0% (Empty)</span>
+              <span class="threshold-marker">&lt;30% Alert</span>
+              <span>100% (Full)</span>
+            </div>
+          </div>
+
+          <!-- Battery -->
+          <div class="slider-card" data-metric="battery">
+            <div class="slider-info">
+              <span class="slider-title">🔋 Device Battery</span>
+              <span class="slider-val" id="valBattery">92%</span>
+            </div>
+            <input type="range" id="rangeBattery" min="0" max="100" step="1" value="92">
+            <div class="range-labels">
+              <span>0%</span>
+              <span>&lt;20% Low</span>
+              <span>100%</span>
+            </div>
+          </div>
+
+          <!-- Toggles Row: Rain & Device Status -->
+          <div class="toggles-grid">
+            <div class="toggle-card">
+              <span class="toggle-title">🌧️ Rain Sensor</span>
+              <label class="switch">
+                <input type="checkbox" id="chkRain">
+                <span class="slider-switch"></span>
+              </label>
+              <span class="toggle-status" id="lblRain">No Rain</span>
+            </div>
+
+            <div class="toggle-card">
+              <span class="toggle-title">📡 Device Status</span>
+              <label class="switch">
+                <input type="checkbox" id="chkOnline" checked>
+                <span class="slider-switch"></span>
+              </label>
+              <span class="toggle-status online" id="lblOnline">Online</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Live Output & Flutter Synchronization -->
+      <section class="panel monitor-panel">
+        <div class="panel-header">
+          <h2>🛰️ Live Telemetry Inspector</h2>
+          <span class="panel-tag" id="lastTxTime">--:--:--</span>
+        </div>
+        <p class="panel-desc">Exact payload synchronized to Firebase Realtime Database:</p>
+
+        <!-- Stats Bar -->
+        <div class="stats-row">
+          <div class="stat-box">
+            <span class="stat-label">Packets Sent</span>
+            <span class="stat-val" id="txCount">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">HTTP Code</span>
+            <span class="stat-val highlight" id="httpCode">200</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">App Field Condition</span>
+            <span class="stat-val condition-good" id="conditionStatus">GOOD</span>
+          </div>
+        </div>
+
+        <!-- JSON Output Display -->
+        <div class="code-wrapper">
+          <div class="code-header">
+            <span>JSON Payload (fields/field01/current)</span>
+            <span class="badge-mini">ESP32 Compatible</span>
+          </div>
+          <pre id="jsonPreview"><code>{
+  "soilMoisture": 45.0,
+  "temperature": 27.5,
+  "humidity": 72.0,
+  "light": 680.0,
+  "rain": false,
+  "waterLevel": 78.0,
+  "battery": 92.0,
+  "deviceStatus": "online",
+  "timestamp": 1727418300000
+}</code></pre>
+        </div>
+
+        <!-- Predicted Flutter App Response Card -->
+        <div class="flutter-preview-card" id="flutterPreviewCard">
+          <div class="preview-title">
+            <span>📱 Predicted Flutter App Reaction</span>
+          </div>
+          <p id="flutterPredictionText" class="preview-body">
+            All monitored conditions are optimal. Health score: ~98/100.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Smart Agriculture Simulator • Mimics ESP32 NodeMCU / ESP-WROOM-32 Telemetry</span>
+      <span class="footer-tip">💡 Tip: Keep Flutter app open on mobile/emulator to watch instant live updates</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
